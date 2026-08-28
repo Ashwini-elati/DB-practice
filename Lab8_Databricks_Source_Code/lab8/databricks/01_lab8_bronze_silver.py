@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Lab 8 · Bronze and Silver
 # MAGIC
@@ -11,7 +15,34 @@
 # MAGIC the same logic, executable on a laptop in two seconds.
 
 # COMMAND ----------
-dbutils.widgets.text("catalog", "aurora_dev")
+
+# MAGIC %sql
+# MAGIC CREATE EXTERNAL LOCATION customer_data_location
+# MAGIC URL 'abfss://landing@demoblob1.dfs.core.windows.net/Customers/'
+# MAGIC WITH (CREDENTIAL my_storage_credential);
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC Create CATALOG aurora_dev1;
+
+# COMMAND ----------
+
+# MAGIC %sql CREATE SCHEMA IF NOT EXISTS aurora_dev1.bronze;
+# MAGIC CREATE SCHEMA IF NOT EXISTS aurora_dev1.silver;
+# MAGIC CREATE SCHEMA IF NOT EXISTS aurora_dev1.gold;
+# MAGIC CREATE SCHEMA IF NOT EXISTS aurora_dev1.ops;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE EXTERNAL VOLUME IF NOT EXISTS bronze.landing
+# MAGIC LOCATION 'abfss://landing@demoblob1.dfs.core.windows.net/Customers/';
+# MAGIC CREATE VOLUME IF NOT EXISTS ops.checkpoints;
+
+# COMMAND ----------
+
+dbutils.widgets.text("catalog", "aurora_dev1")
 dbutils.widgets.text("load_date", "2024-04-01")
 dbutils.widgets.text("batch_id", "1")
 
@@ -20,17 +51,24 @@ LOAD_DATE = dbutils.widgets.get("load_date")
 BATCH_ID = int(dbutils.widgets.get("batch_id"))
 
 LANDING = f"/Volumes/{CATALOG}/bronze/landing"
-CHECKPOINTS = f"/Volumes/{CATALOG}/ops/checkpoints"
-
-spark.sql(f"USE CATALOG {CATALOG}")
+print(CATALOG)
+print(LANDING)
 
 # COMMAND ----------
+
+print("CATALOG =", CATALOG)
+print("LOAD_DATE =", LOAD_DATE)
+print("LANDING =", LANDING)
+
+# COMMAND ----------
+
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import (DecimalType, IntegerType, StringType,
                                StructField, StructType)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1 · Read the landing volume
 # MAGIC
@@ -47,7 +85,71 @@ from pyspark.sql.types import (DecimalType, IntegerType, StringType,
 # MAGIC visible.
 
 # COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE VOLUME IF NOT EXISTS aurora_dev1.bronze.landing;
+
+# COMMAND ----------
+
+display(dbutils.fs.ls("/Volumes/aurora_dev1/bronze/landing"))
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC USE CATALOG aurora_dev1;
+# MAGIC USE SCHEMA bronze;
+# MAGIC
+# MAGIC CREATE TABLE IF NOT EXISTS bronze.orders (
+# MAGIC order_id STRING,
+# MAGIC customer_id STRING,
+# MAGIC product_id STRING,
+# MAGIC quantity STRING,
+# MAGIC unit_price STRING,
+# MAGIC status STRING,
+# MAGIC updated_at STRING,
+# MAGIC _batch_id INT,
+# MAGIC _load_date DATE,
+# MAGIC _ingested_at TIMESTAMP,
+# MAGIC _source_file STRING
+# MAGIC )
+# MAGIC USING DELTA
+# MAGIC PARTITIONED BY (_load_date);
+
+# COMMAND ----------
+
+display(dbutils.fs.ls("/Volumes/aurora_dev1/bronze/landing"))
+
+# COMMAND ----------
+
+display(dbutils.fs.ls(LANDING))
+
+# COMMAND ----------
+
+LANDING = "/Volumes/aurora_dev1/bronze/landing"
+LOAD_DATE = "2024-04-01"
+
+# COMMAND ----------
+
+print("LANDING =", LANDING)
+print("LOAD_DATE =", LOAD_DATE)
+print("PATH =", f"{LANDING}/orders/load_date={LOAD_DATE}")
+
+
+# COMMAND ----------
+
+display(dbutils.fs.ls("/Volumes/aurora_dev1/bronze/landing"))
+
+
+# COMMAND ----------
+
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    StringType
+)
+
 ORDERS_SCHEMA = StructType([
+
     StructField("order_id",    StringType(), True),
     StructField("customer_id", StringType(), True),
     StructField("product_id",  StringType(), True),
@@ -58,14 +160,21 @@ ORDERS_SCHEMA = StructType([
     StructField("updated_at",  StringType(), True),
 ])
 
-raw = (spark.read
-       .option("header", "true")
-       .schema(ORDERS_SCHEMA)
-       .csv(f"{LANDING}/orders/load_date={LOAD_DATE}"))
+
+LANDING = "/Volumes/aurora_dev1/bronze/landing"
+LOAD_DATE = "2024-04-01"
+
+raw = (
+    spark.read
+         .option("header", "true")
+         .schema(ORDERS_SCHEMA)
+         .csv(f"{LANDING}/orders/load_date={LOAD_DATE}")
+)
 
 print(f"landed: {raw.count():,} rows")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### The Auto Loader alternative
 # MAGIC
@@ -81,6 +190,7 @@ print(f"landed: {raw.count():,} rows")
 # MAGIC   governed volume, not on a cluster, or losing it means a full reload.
 
 # COMMAND ----------
+
 # raw = (spark.readStream.format("cloudFiles")
 #        .option("cloudFiles.format", "csv")
 #        .option("cloudFiles.schemaLocation", f"{CHECKPOINTS}/bronze_orders/schema")
@@ -90,6 +200,7 @@ print(f"landed: {raw.count():,} rows")
 #        .load(f"{LANDING}/orders"))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2 · Bronze — add lineage, reject nothing
 # MAGIC
@@ -102,6 +213,27 @@ print(f"landed: {raw.count():,} rows")
 # MAGIC you want when somebody asks where a row came from.
 
 # COMMAND ----------
+
+from datetime import datetime
+import uuid
+from pyspark.sql import functions as F
+
+LANDING = "/Volumes/aurora_dev1/bronze/landing"
+LOAD_DATE = "2024-04-01"
+
+BATCH_ID = (
+    f"BATCH_{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+    f"{str(uuid.uuid4())[:8]}"
+)
+
+print("LANDING:", LANDING)
+print("LOAD_DATE:", LOAD_DATE)
+print("BATCH_ID:", BATCH_ID)
+
+# COMMAND ----------
+
+from pyspark.sql import functions as F
+
 bronze = (raw
           .withColumn("_batch_id", F.lit(BATCH_ID))
           .withColumn("_load_date", F.to_date(F.lit(LOAD_DATE)))
@@ -120,6 +252,7 @@ bronze = (raw
 print(f"bronze.orders: {spark.table('bronze.orders').count():,} rows total")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3 · Deduplicate to one row per business key
 # MAGIC
@@ -133,6 +266,9 @@ print(f"bronze.orders: {spark.table('bronze.orders').count():,} rows total")
 # MAGIC answers, and neither can reproduce the other's.
 
 # COMMAND ----------
+
+from pyspark.sql.window import Window
+
 window = (Window.partitionBy("order_id")
           .orderBy(F.col("updated_at").desc(), F.col("_ingested_at").desc()))
 
@@ -145,6 +281,7 @@ deduped = (spark.table("bronze.orders")
 print(f"after dedup: {deduped.count():,} rows")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4 · Quality rules, and the NULL trap
 # MAGIC
@@ -163,6 +300,7 @@ print(f"after dedup: {deduped.count():,} rows")
 # MAGIC as a failure. This was a real bug in this lab, caught by a test.
 
 # COMMAND ----------
+
 RULES = [
     ("order_id_present",       "order_id IS NOT NULL AND trim(order_id) <> ''", "QUARANTINE"),
     ("customer_id_present",    "customer_id IS NOT NULL",                        "QUARANTINE"),
@@ -193,6 +331,7 @@ passing_count, failing_count = passing.count(), failing.count()
 print(f"passing {passing_count:,} | quarantined {failing_count:,}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5 · Quarantine — park it, never drop it
 # MAGIC
@@ -202,6 +341,7 @@ print(f"passing {passing_count:,} | quarantined {failing_count:,}")
 # MAGIC non-engineer could act on.
 
 # COMMAND ----------
+
 if failing_count:
     (failing
      .withColumn("_batch_id", F.lit(BATCH_ID))
@@ -215,6 +355,7 @@ if failing_count:
             .select("order_id", "_reject_reason"))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 6 · Silver — cast, conform, write
 # MAGIC
@@ -228,6 +369,9 @@ if failing_count:
 # MAGIC it to today corrupts every historical trend.
 
 # COMMAND ----------
+
+from pyspark.sql.types import IntegerType, DecimalType
+
 silver = (passing
           .withColumn("order_id",    F.trim("order_id"))
           .withColumn("customer_id", F.trim("customer_id"))
@@ -255,6 +399,7 @@ silver = (passing
 print(f"silver.orders: {spark.table('silver.orders').count():,} rows")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 7 · Reconcile — the control that catches silent loss
 # MAGIC
@@ -265,6 +410,7 @@ print(f"silver.orders: {spark.table('silver.orders').count():,} rows")
 # MAGIC lost rather than rejected, which is a different and more serious problem.
 
 # COMMAND ----------
+
 bronze_rows = spark.table("bronze.orders").filter(F.col("_load_date") == LOAD_DATE).count()
 quarantined = (spark.table("silver.quarantine_orders")
                .filter(F.col("_load_date") == LOAD_DATE).count()
@@ -279,6 +425,7 @@ assert difference == 0, (
     f"{'rows are being LOST, not rejected' if quarantined == 0 else 'counts do not balance'}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 8 · Register grants
 # MAGIC
@@ -289,6 +436,43 @@ assert difference == 0, (
 # MAGIC then say which is right.
 
 # COMMAND ----------
+
+from pyspark.sql import functions as F
+
+quarantine_df = (
+    raw
+    .filter(
+        F.col("quantity").isNull() |
+        (F.col("quantity").cast("int") <= 0)
+    )
+)
+
+display(quarantine_df)
+
+
+# COMMAND ----------
+
+(
+    quarantine_df.write
+    .format("delta")
+    .mode("append")
+    .saveAsTable(
+        "databrickspractice.silver.quarantine_orders"
+    )
+)
+
+
+# COMMAND ----------
+
+display(
+    spark.sql("""
+        SHOW TABLES IN databrickspractice.silver
+    """)
+)
+
+
+# COMMAND ----------
+
 spark.sql("GRANT SELECT ON TABLE silver.orders TO `data-engineers`")
 spark.sql("GRANT SELECT ON TABLE silver.orders TO `data-scientists`")
 spark.sql("GRANT SELECT ON TABLE silver.quarantine_orders TO `data-engineers`")
@@ -297,6 +481,7 @@ spark.sql("GRANT SELECT ON TABLE silver.quarantine_orders TO `data-engineers`")
 display(spark.sql("SHOW GRANTS ON TABLE silver.orders"))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 9 · Delta housekeeping
 # MAGIC
@@ -310,6 +495,7 @@ display(spark.sql("SHOW GRANTS ON TABLE silver.orders"))
 # MAGIC single most useful property Delta gives you.
 
 # COMMAND ----------
+
 spark.sql("OPTIMIZE silver.orders")
 
 # On a recent runtime prefer liquid clustering over Z-order: declare it on the
@@ -320,6 +506,7 @@ display(spark.sql("DESCRIBE HISTORY silver.orders").select(
     "version", "timestamp", "operation", "operationMetrics").limit(10))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### Time travel — the reason to care about the transaction log
 # MAGIC
@@ -327,6 +514,7 @@ display(spark.sql("DESCRIBE HISTORY silver.orders").select(
 # MAGIC you ACID, and it is what makes these possible:
 
 # COMMAND ----------
+
 # What did this table look like before today's load?
 # display(spark.read.format("delta").option("versionAsOf", 3).table("silver.orders"))
 
@@ -337,3 +525,80 @@ display(spark.sql("DESCRIBE HISTORY silver.orders").select(
 # display(spark.sql("""
 #   SELECT * FROM table_changes('silver.orders', 3, 4)
 # """))
+
+# COMMAND ----------
+
+from pyspark.sql import functions as F
+
+customers_data = [
+    ("C001","John","Smith","john.smith@email.com","+1-555-0101","New York","USA"),
+    ("C002","Sarah","Johnson","sarah.johnson@email.com","+1-555-0102","Chicago","USA"),
+    ("C003","Michael","Brown","michael.brown@email.com","+1-555-0103","Boston","USA"),
+    ("C004","Emily","Davis","emily.davis@email.com","+1-555-0104","Seattle","USA"),
+    ("C005","David","Wilson","david.wilson@email.com","+1-555-0105","Denver","USA"),
+    ("C001","John","Smith","john.smith@email.com","+1-555-0101","New York","USA"),
+    ("C006","Robert","Miller","robert.miller@email.com","+1-555-0106","Austin","USA"),
+    ("C007","Jessica","Moore","jessica.moore@email.com","+1-555-0107","Miami","USA"),
+    ("C003","Michael","Brown","michael.brown@email.com","+1-555-0103","Boston","USA"),
+    ("C008","Daniel","Taylor","daniel.taylor@email.com","+1-555-0108","Atlanta","USA"),
+    ("C004","Emily","Davis","emily.davis@email.com","+1-555-0104","Seattle","USA"),
+    ("C009","Laura","Anderson","laura.anderson@email.com","+1-555-0109","Portland","USA"),
+    ("C010","James","Thomas","james.thomas@email.com","+1-555-0110","Dallas","USA"),
+    ("C006","Robert","Miller","robert.miller@email.com","+1-555-0106","Austin","USA"),
+    ("C011","Amanda","Jackson","amanda.jackson@email.com","+1-555-0111","San Diego","USA"),
+    ("C009","Laura","Anderson","laura.anderson@email.com","+1-555-0109","Portland","USA"),
+    ("C002","Sarah","Johnson","sarah.johnson@email.com","+1-555-0102","Chicago","USA"),
+    ("C012","William","White","william.white@email.com","+1-555-0112","Phoenix","USA"),
+    ("C010","James","Thomas","james.thomas@email.com","+1-555-0110","Dallas","USA"),
+    ("C005","David","Wilson","david.wilson@email.com","+1-555-0105","Denver","USA")
+]
+
+customer_columns = [
+    "customer_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "city",
+    "country"
+]
+
+customers_df = spark.createDataFrame(
+    customers_data,
+    customer_columns
+)
+
+print("Customer rows:", customers_df.count())
+display(customers_df)
+
+
+# COMMAND ----------
+
+from datetime import datetime
+import uuid
+
+LOAD_DATE = "2024-04-01"
+
+BATCH_ID = (
+    f"BATCH_{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+    f"{str(uuid.uuid4())[:8]}"
+)
+
+customers_bronze = (
+    customers_df
+    .withColumn("_load_date", F.lit(LOAD_DATE))
+    .withColumn("_batch_id", F.lit(BATCH_ID))
+    .withColumn("_ingested_at", F.current_timestamp())
+)
+
+display(customers_bronze)
+
+
+# COMMAND ----------
+
+(
+    customers_bronze.write
+    .format("delta")
+    .mode("overwrite")
+    .saveAsTable("aurora_dev1.bronze.customers")
+)

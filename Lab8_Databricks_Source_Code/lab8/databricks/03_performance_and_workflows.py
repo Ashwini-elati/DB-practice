@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Performance and orchestration
 # MAGIC
@@ -10,7 +14,8 @@
 # MAGIC about which one helped, or whether any of them did.
 
 # COMMAND ----------
-dbutils.widgets.text("catalog", "aurora_dev")
+
+dbutils.widgets.text("catalog", "aurora_dev1")
 CATALOG = dbutils.widgets.get("catalog")
 spark.sql(f"USE CATALOG {CATALOG}")
 
@@ -18,6 +23,7 @@ from pyspark.sql import functions as F
 import time
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1 · Read the Spark UI before touching anything
 # MAGIC
@@ -34,6 +40,7 @@ import time
 # MAGIC job faster.
 
 # COMMAND ----------
+
 def timed(label, fn):
     """Best-of-three. The mean measures whatever else the cluster was doing."""
     best = float("inf")
@@ -45,6 +52,7 @@ def timed(label, fn):
     return result
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2 · Partitioning — the one people over-apply
 # MAGIC
@@ -58,6 +66,7 @@ def timed(label, fn):
 # MAGIC partition — use clustering instead.
 
 # COMMAND ----------
+
 display(spark.sql(f"""
     SELECT order_date_key, COUNT(*) AS rows,
            ROUND(COUNT(*) / SUM(COUNT(*)) OVER () * 100, 2) AS pct_of_table
@@ -66,6 +75,7 @@ display(spark.sql(f"""
 """))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3 · Liquid clustering — prefer it to Z-order on a recent runtime
 # MAGIC
@@ -76,6 +86,7 @@ display(spark.sql(f"""
 # MAGIC wrong within a year.
 
 # COMMAND ----------
+
 # spark.sql(f"ALTER TABLE {CATALOG}.gold.fact_sales CLUSTER BY (customer_key, order_date_key)")
 # spark.sql(f"OPTIMIZE {CATALOG}.gold.fact_sales")
 
@@ -86,6 +97,7 @@ display(spark.sql(f"DESCRIBE DETAIL {CATALOG}.gold.fact_sales")
         .select("numFiles", "sizeInBytes", "clusteringColumns", "partitionColumns"))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4 · File sizing — the small-file problem, measured
 # MAGIC
@@ -94,6 +106,7 @@ display(spark.sql(f"DESCRIBE DETAIL {CATALOG}.gold.fact_sales")
 # MAGIC reading.
 
 # COMMAND ----------
+
 detail = spark.sql(f"DESCRIBE DETAIL {CATALOG}.gold.fact_sales").first()
 avg_mb = (detail.sizeInBytes / max(detail.numFiles, 1)) / 1024 / 1024
 print(f"{detail.numFiles:,} files, average {avg_mb:.1f} MB")
@@ -103,6 +116,7 @@ if avg_mb < 32:
           "over-partitioned write).")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5 · Skew — and why AQE usually handles it now
 # MAGIC
@@ -117,6 +131,7 @@ if avg_mb < 32:
 # MAGIC at all.
 
 # COMMAND ----------
+
 print("AQE:            ", spark.conf.get("spark.sql.adaptive.enabled"))
 print("skew join:      ", spark.conf.get("spark.sql.adaptive.skewJoin.enabled"))
 print("coalesce parts: ", spark.conf.get("spark.sql.adaptive.coalescePartitions.enabled"))
@@ -131,6 +146,7 @@ display(spark.sql(f"""
 """))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 6 · Broadcast joins
 # MAGIC
@@ -144,6 +160,7 @@ display(spark.sql(f"""
 # MAGIC slow join.
 
 # COMMAND ----------
+
 facts = spark.table(f"{CATALOG}.gold.fact_sales")
 dim = spark.table(f"{CATALOG}.gold.dim_customer").filter("is_current")
 
@@ -157,6 +174,7 @@ timed("join, broadcast hint", lambda:
 facts.join(dim, "customer_key").explain("formatted")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 7 · Caching — narrower than people think
 # MAGIC
@@ -169,6 +187,7 @@ facts.join(dim, "customer_key").explain("formatted")
 # MAGIC `.cache()` in the first place.
 
 # COMMAND ----------
+
 # reused = spark.table(f"{CATALOG}.silver.orders").filter("status = 'delivered'")
 # reused.cache()
 # reused.count()      # materialise once
@@ -177,6 +196,7 @@ facts.join(dim, "customer_key").explain("formatted")
 #                     # memory the next stage needed.
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 8 · Compute types — choosing the right one
 # MAGIC
@@ -203,6 +223,7 @@ facts.join(dim, "customer_key").explain("formatted")
 # MAGIC   which is what makes the conversation about it possible at all.
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 9 · Workflows — one task per notebook, dependencies as edges
 # MAGIC
@@ -213,6 +234,7 @@ facts.join(dim, "customer_key").explain("formatted")
 # MAGIC in one sentence.
 
 # COMMAND ----------
+
 WORKFLOW = {
     "name": "aurora_daily",
     "job_clusters": [{
@@ -265,6 +287,7 @@ import json
 print(json.dumps(WORKFLOW, indent=2))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 10 · Governance — lineage and audit
 # MAGIC
@@ -276,6 +299,7 @@ print(json.dumps(WORKFLOW, indent=2))
 # MAGIC Two queries worth knowing before you need them.
 
 # COMMAND ----------
+
 # What feeds this table, and what reads it?
 display(spark.sql(f"""
     SELECT source_table_full_name, target_table_full_name,
@@ -287,6 +311,7 @@ display(spark.sql(f"""
 """))
 
 # COMMAND ----------
+
 # Who read the customer dimension in the last week, and from where?
 display(spark.sql("""
     SELECT event_time, user_identity.email AS who, action_name,
@@ -300,6 +325,7 @@ display(spark.sql("""
 """))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 11 · Cost, in one query
 # MAGIC
@@ -308,6 +334,7 @@ display(spark.sql("""
 # MAGIC attribute — and an unattributable bill never gets reduced.
 
 # COMMAND ----------
+
 display(spark.sql("""
     SELECT u.usage_metadata.job_id,
            u.custom_tags.cost_centre,
