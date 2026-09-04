@@ -1,0 +1,798 @@
+{
+  "datasets": [
+    {
+      "name": "trade_market_base",
+      "displayName": "Trade Market Gold Metrics",
+      "queryLines": [
+        "SELECT\n",
+        "  window.start AS window_start,\n",
+        "  window.end AS window_end,\n",
+        "  symbol,\n",
+        "  trade_count,\n",
+        "  gross_value,\n",
+        "  buy_value,\n",
+        "  sell_value\n",
+        "FROM\n",
+        "  streaming_demo.trades.stream_gold_symbol_metrics"
+      ]
+    },
+    {
+      "name": "top_symbols_volume",
+      "displayName": "Trade Count by Symbol",
+      "queryLines": [
+        "SELECT\n",
+        "  symbol,\n",
+        "  SUM(trade_count) AS total_trades\n",
+        "FROM\n",
+        "  streaming_demo.trades.stream_gold_symbol_metrics\n",
+        "GROUP BY\n",
+        "  symbol\n",
+        "ORDER BY\n",
+        "  total_trades DESC\n",
+        "LIMIT 10"
+      ]
+    },
+    {
+      "name": "top_symbols_value",
+      "displayName": "Trading Value by Symbol",
+      "queryLines": [
+        "SELECT\n",
+        "  symbol,\n",
+        "  SUM(gross_value) AS total_gross_value\n",
+        "FROM\n",
+        "  streaming_demo.trades.stream_gold_symbol_metrics\n",
+        "GROUP BY\n",
+        "  symbol\n",
+        "ORDER BY\n",
+        "  total_gross_value DESC\n",
+        "LIMIT 10"
+      ]
+    },
+    {
+      "name": "buy_sell_summary",
+      "displayName": "Buy vs Sell by Symbol",
+      "queryLines": [
+        "SELECT\n",
+        "  symbol,\n",
+        "  'Buy' AS side_type,\n",
+        "  SUM(buy_value) AS total_value\n",
+        "FROM\n",
+        "  streaming_demo.trades.stream_gold_symbol_metrics\n",
+        "GROUP BY\n",
+        "  symbol\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  symbol,\n",
+        "  'Sell' AS side_type,\n",
+        "  SUM(sell_value) AS total_value\n",
+        "FROM\n",
+        "  streaming_demo.trades.stream_gold_symbol_metrics\n",
+        "GROUP BY\n",
+        "  symbol"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "18ae814c",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "date_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1a7c47f6b12c2b88dbabdebc7f040/datasets/01f1a846090317e3a55548dc8bff7a30_window_start",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "window_start",
+                      "expression": "`window_start`"
+                    },
+                    {
+                      "name": "window_start_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Date"
+              },
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "window_start",
+                    "queryName": "dashboards/01f1a7c47f6b12c2b88dbabdebc7f040/datasets/01f1a846090317e3a55548dc8bff7a30_window_start"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "symbol_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1a7c47f6b12c2b88dbabdebc7f040/datasets/01f1a846090317e3a55548dc8bff7a30_symbol",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "symbol",
+                      "expression": "`symbol`"
+                    },
+                    {
+                      "name": "symbol_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Symbol"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "symbol",
+                    "queryName": "dashboards/01f1a7c47f6b12c2b88dbabdebc7f040/datasets/01f1a846090317e3a55548dc8bff7a30_symbol"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "0be6c2bc",
+      "displayName": "Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "total_trades",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "sum(trade_count)",
+                      "expression": "SUM(`trade_count`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Total Trades"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(trade_count)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "trading_value",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "sum(gross_value)",
+                      "expression": "SUM(`gross_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Trading Value"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(gross_value)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "buy_value",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "sum(buy_value)",
+                      "expression": "SUM(`buy_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Buy Value"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(buy_value)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "sell_value",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "sum(sell_value)",
+                      "expression": "SUM(`sell_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Sell Value"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(sell_value)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "trading_value_by_symbol",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top_symbols_value",
+                  "fields": [
+                    {
+                      "name": "symbol",
+                      "expression": "`symbol`"
+                    },
+                    {
+                      "name": "sum(total_gross_value)",
+                      "expression": "SUM(`total_gross_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Trading Value by Symbol"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "symbol",
+                  "displayName": "symbol",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_gross_value)",
+                  "displayName": "total_gross_value",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "symbol",
+                  "displayName": "symbol",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "trade_count_by_symbol",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top_symbols_volume",
+                  "fields": [
+                    {
+                      "name": "symbol",
+                      "expression": "`symbol`"
+                    },
+                    {
+                      "name": "sum(total_trades)",
+                      "expression": "SUM(`total_trades`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Trade Count by Symbol"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "symbol",
+                  "displayName": "symbol",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_trades)",
+                  "displayName": "total_trades",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "symbol",
+                  "displayName": "symbol",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "buy_vs_sell_by_symbol",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "buy_sell_summary",
+                  "fields": [
+                    {
+                      "name": "side_type",
+                      "expression": "`side_type`"
+                    },
+                    {
+                      "name": "symbol",
+                      "expression": "`symbol`"
+                    },
+                    {
+                      "name": "sum(total_value)",
+                      "expression": "SUM(`total_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Buy vs Sell by Symbol",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "symbol",
+                  "displayName": "symbol",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_value)",
+                  "displayName": "total_value",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "side_type",
+                  "displayName": "side_type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "trading_activity_over_time",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "minutely(window_start)",
+                      "expression": "DATE_TRUNC(\"MINUTE\", `window_start`)"
+                    },
+                    {
+                      "name": "sum(gross_value)",
+                      "expression": "SUM(`gross_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Trading Activity Over Time"
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "minutely(window_start)",
+                  "displayName": "Time",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(gross_value)",
+                  "displayName": "gross_value",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "five_minute_trading_metrics",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "trade_market_base",
+                  "fields": [
+                    {
+                      "name": "window_start",
+                      "expression": "`window_start`"
+                    },
+                    {
+                      "name": "symbol",
+                      "expression": "`symbol`"
+                    },
+                    {
+                      "name": "sum(trade_count)",
+                      "expression": "SUM(`trade_count`)"
+                    },
+                    {
+                      "name": "sum(gross_value)",
+                      "expression": "SUM(`gross_value`)"
+                    },
+                    {
+                      "name": "sum(buy_value)",
+                      "expression": "SUM(`buy_value`)"
+                    },
+                    {
+                      "name": "sum(sell_value)",
+                      "expression": "SUM(`sell_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "5-Minute Trading Metrics"
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "window_start"
+                  },
+                  {
+                    "fieldName": "symbol"
+                  },
+                  {
+                    "fieldName": "sum(trade_count)"
+                  },
+                  {
+                    "fieldName": "sum(gross_value)"
+                  },
+                  {
+                    "fieldName": "sum(buy_value)"
+                  },
+                  {
+                    "fieldName": "sum(sell_value)"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 12,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "canvasBackgroundColor": {
+        "light": "#0B1220",
+        "dark": "#020617"
+      },
+      "widgetBackgroundColor": {
+        "light": "#111827",
+        "dark": "#0F172A"
+      },
+      "widgetBorderColor": {
+        "light": "#1F2937",
+        "dark": "#1E293B"
+      },
+      "fontColor": {
+        "light": "#E5E7EB",
+        "dark": "#E5E7EB"
+      },
+      "selectionColor": {
+        "light": "#60A5FA",
+        "dark": "#93C5FD"
+      },
+      "visualizationColors": [
+        "#60A5FA",
+        "#34D399",
+        "#F59E0B",
+        "#A78BFA",
+        "#F472B6",
+        "#22D3EE",
+        "#F87171",
+        "#FCD34D"
+      ],
+      "widgetHeaderAlignment": "LEFT",
+      "fontFamily": "Inter",
+      "widgetPadding": 20,
+      "widgetMargin": 8,
+      "widgetCornerRadius": 16,
+      "widgetShadow": 20,
+      "fontSettings": {
+        "base": {
+          "fontFamily": "Inter",
+          "fontColor": {
+            "light": "#CBD5E1",
+            "dark": "#CBD5E1"
+          },
+          "fontSize": 12
+        },
+        "widgetTitle": {
+          "fontFamily": "Inter",
+          "fontColor": {
+            "light": "#F8FAFC",
+            "dark": "#F8FAFC"
+          },
+          "fontSize": 16,
+          "fontWeight": 700
+        },
+        "widgetDescription": {
+          "fontFamily": "Inter",
+          "fontColor": {
+            "light": "#94A3B8",
+            "dark": "#94A3B8"
+          },
+          "fontSize": 12,
+          "fontWeight": 400
+        },
+        "fieldTitle": {
+          "fontFamily": "Inter",
+          "textCase": "TEXT_CASE_UPPERCASE",
+          "fontColor": {
+            "light": "#94A3B8",
+            "dark": "#94A3B8"
+          },
+          "fontSize": 12,
+          "fontWeight": 600
+        },
+        "fieldValue": {
+          "fontFamily": "Inter",
+          "fontColor": {
+            "light": "#F8FAFC",
+            "dark": "#F8FAFC"
+          },
+          "fontSize": 24,
+          "fontWeight": 800
+        }
+      },
+      "gridLineColor": {
+        "light": "#334155",
+        "dark": "#334155"
+      },
+      "axisLineColor": {
+        "light": "#475569",
+        "dark": "#475569"
+      },
+      "visualizationColorMappings": [
+        {
+          "value": "BUY",
+          "color": "#22C55E"
+        },
+        {
+          "value": "SELL",
+          "color": "#EF4444"
+        }
+      ]
+    },
+    "applyModeEnabled": false
+  }
+}
